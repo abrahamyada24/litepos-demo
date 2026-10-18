@@ -1,5 +1,12 @@
 const { prisma } = require('../config/prisma');
 const { enterDataSync } = require('../services/dataResetCoordinator');
+const { normalizeCustomerPhone, customerPhoneAliases } = require('../services/customerPhoneService');
+const loyaltySnapshotFromAndroid = transaction => {
+  if (String(transaction.status).toUpperCase() === 'PENDING' || ['PARTIAL', 'UNPAID'].includes(String(transaction.paymentStatus).toUpperCase())) return {};
+  const keys = ['pointsEarned', 'pointsRedeemed', 'pointsBalanceAfter'];
+  if (!keys.every(key => transaction[key] != null && Number.isSafeInteger(Number(transaction[key])) && Number(transaction[key]) >= 0)) return {};
+  return Object.fromEntries(keys.map(key => [key, Number(transaction[key])]));
+};
 
 const normalizeAndroidPayment = (transaction) => {
   const grandTotal = Math.max(0, Number(transaction.grandTotal) || 0);
@@ -294,7 +301,7 @@ exports.pushLocalData = async (req, res) => {
             try {
                 const androidId = parseInt(cust.id);
                 const requestedServerId = parseInt(cust.serverId);
-                const normalizedPhone = nonEmptyString(cust.phone);
+                const normalizedPhone = normalizeCustomerPhone(cust.phone);
                 const normalizedName = nonEmptyString(cust.name) || 'Pelanggan';
                 let serverCust = !isNaN(requestedServerId)
                     ? await prisma.customer.findUnique({ where: { id: requestedServerId } })
@@ -303,7 +310,7 @@ exports.pushLocalData = async (req, res) => {
                     serverCust = await prisma.customer.findUnique({ where: { androidId } });
                 }
                 if (!serverCust && normalizedPhone) {
-                    serverCust = await prisma.customer.findUnique({ where: { phone: normalizedPhone } });
+                    serverCust = await prisma.customer.findFirst({ where: { phone: { in: customerPhoneAliases(normalizedPhone) } } });
                 }
                 if (!serverCust) {
                     serverCust = await prisma.customer.create({
@@ -478,7 +485,7 @@ exports.pushLocalData = async (req, res) => {
           // Transaksi sudah ada di server tapi diretur dari Android
           await prisma.transaction.update({
             where: { id: exists.id },
-            data: { status: 'RETURNED' }
+            data: { status: 'RETURNED', loyaltyReversed: true }
           });
 
           // Kembalikan stok di server (reverse stock decrement)
@@ -510,6 +517,7 @@ exports.pushLocalData = async (req, res) => {
           const existingPayment = summarizePayments(exists);
           const shouldApplyPayment = incomingPayment.paidAmount > existingPayment.paidAmount;
           const transactionData = {};
+          if (exists.pointsEarned == null) Object.assign(transactionData, loyaltySnapshotFromAndroid(tx));
 
           // Konfirmasi pengambilan bersifat satu arah (false -> true), sehingga
           // data Android yang lebih lama tidak dapat membatalkan konfirmasi web.
@@ -649,6 +657,8 @@ exports.pushLocalData = async (req, res) => {
           await syncTx.transaction.create({
             data: {
               androidId: tx.id,
+              ...loyaltySnapshotFromAndroid(tx),
+              loyaltyReversed: incomingTransactionStatus === 'RETURNED',
               invoiceNumber: tx.invoiceNumber,
               subTotal: subTotal,
               taxAmount: 0,
@@ -1097,6 +1107,11 @@ exports.getTransactionHistory = async (req, res) => {
         invoiceNumber: tx.invoiceNumber,
         grandTotal: Number(tx.grandTotal),
         discountAmount: Number(tx.discountAmount),
+        taxAmount: Number(tx.taxAmount),
+        pointsEarned: tx.pointsEarned,
+        pointsRedeemed: tx.pointsRedeemed,
+        pointsBalanceAfter: tx.pointsBalanceAfter,
+        loyaltyReversed: tx.loyaltyReversed,
         paymentMethod: preferredPayment?.paymentType || 'CASH',
         paymentStatus: payment.paymentStatus,
         paidAmount: payment.paidAmount,

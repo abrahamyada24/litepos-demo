@@ -1,5 +1,7 @@
 # Deploy Pembaruan LitePOS Demo
 
+> Pembaruan fungsional 18 Oktober 2026 menambahkan kolom snapshot poin transaksi. Baca [catatan pembaruan LitePOS](LITEPOS_UPDATE_2026-10-18.md) sebelum menerbitkan backend baru. Konfigurasi `.env`, password, keystore, dan tujuan layanan LitePOS tetap memakai yang sudah ada.
+
 Panduan ini ditulis untuk susunan layanan yang sedang dipakai:
 
 - database: TiDB Cloud;

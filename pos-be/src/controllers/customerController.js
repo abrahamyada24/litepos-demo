@@ -1,5 +1,6 @@
 const { prisma } = require('../config/prisma');
 const { getUploadedFileUrl } = require('../utils/uploadedFileUrl');
+const { normalizeCustomerPhone, customerPhoneAliases } = require('../services/customerPhoneService');
 
 const DISPLAY_TYPES = new Set(['normal', 'tall', 'wide', 'large']);
 const optionalText = (value) => String(value || '').trim() || null;
@@ -93,7 +94,7 @@ exports.createCustomer = async (req, res) => {
     const imageUrl = getUploadedFileUrl(req.file);
     const memberId = await generateMemberId(req.storeId);
 
-    const validPhone = phone && String(phone).trim() !== "" ? String(phone).trim() : null;
+    const validPhone = normalizeCustomerPhone(phone);
     const validEmail = email && String(email).trim() !== "" ? String(email).trim() : null;
     const validNotes = optionalText(notes);
     const validLoyaltyDiscount = parseLoyaltyDiscount(loyaltyDiscount);
@@ -111,7 +112,7 @@ exports.createCustomer = async (req, res) => {
     }
 
     if (validPhone) {
-      const exist = await prisma.customer.findUnique({ where: { phone: validPhone } });
+      const exist = await prisma.customer.findFirst({ where: { phone: { in: customerPhoneAliases(validPhone) } } });
       if (exist) return res.status(400).json({ success: false, message: "Nomor HP sudah terdaftar!" });
     }
 
@@ -131,6 +132,8 @@ exports.createCustomer = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Pelanggan berhasil ditambahkan", data: customer });
   } catch (error) {
+    if (error.code === 'INVALID_PHONE') return res.status(400).json({ success: false, message: error.message });
+    if (error.code === 'P2002') return res.status(409).json({ success: false, message: 'Nomor HP sudah terdaftar.' });
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -148,12 +151,12 @@ exports.updateCustomer = async (req, res) => {
       updateData.name = validName;
     }
     if (phone !== undefined) {
-      const validPhone = optionalText(phone);
+      const validPhone = normalizeCustomerPhone(phone);
       if (validPhone && validPhone.length > 20) {
         return res.status(400).json({ success: false, message: "Nomor HP maksimal 20 karakter." });
       }
       if (validPhone) {
-        const duplicate = await prisma.customer.findFirst({ where: { phone: validPhone, id: { not: customerId } } });
+        const duplicate = await prisma.customer.findFirst({ where: { phone: { in: customerPhoneAliases(validPhone) }, id: { not: customerId } } });
         if (duplicate) return res.status(400).json({ success: false, message: "Nomor HP sudah terdaftar!" });
       }
       updateData.phone = validPhone;
@@ -187,6 +190,8 @@ exports.updateCustomer = async (req, res) => {
 
     res.json({ success: true, message: "Data pelanggan berhasil diupdate", data: customer });
   } catch (error) {
+    if (error.code === 'INVALID_PHONE') return res.status(400).json({ success: false, message: error.message });
+    if (error.code === 'P2002') return res.status(409).json({ success: false, message: 'Nomor HP sudah terdaftar.' });
     res.status(500).json({ success: false, error: error.message });
   }
 };

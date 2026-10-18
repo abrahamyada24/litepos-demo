@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Loader2, Plus, Save, User, X } from 'lucide-react';
+import { restrictPhoneInput, validatePhoneInput } from '@/utils/phone';
 
 export default function MemberModal({ isOpen, onClose, memberSearch, setMemberSearch, filteredMembers, handleMemberSelect, getImageUrl, onCreateMember }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
+  const phoneError = validatePhoneInput(formData.phone);
 
   useEffect(() => {
     if (!isOpen) {
@@ -23,7 +25,7 @@ export default function MemberModal({ isOpen, onClose, memberSearch, setMemberSe
 
   const handleCreate = async (event) => {
     event.preventDefault();
-    if (!formData.name.trim() || isSubmitting) return;
+    if (!formData.name.trim() || phoneError || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
@@ -72,12 +74,15 @@ export default function MemberModal({ isOpen, onClose, memberSearch, setMemberSe
               <label className="mb-1 block text-xs font-bold text-gray-600">Nomor HP</label>
               <input
                 type="tel"
-                maxLength={20}
+                inputMode="tel"
+                maxLength={16}
+                aria-invalid={Boolean(phoneError)}
                 value={formData.phone}
-                onChange={(event) => setFormData(current => ({ ...current, phone: event.target.value }))}
+                onChange={(event) => setFormData(current => ({ ...current, phone: restrictPhoneInput(event.target.value) }))}
                 placeholder="08xxxxxxxxxx (opsional)"
                 className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               />
+              {phoneError && <p className="mt-1 text-xs text-red-600" role="alert">{phoneError}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-bold text-gray-600">Email</label>

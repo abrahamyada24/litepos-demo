@@ -1,5 +1,6 @@
 module.exports = {
   preset: 'react-native',
+  roots: ['<rootDir>/__tests__'],
   transformIgnorePatterns: [
     'node_modules/(?!((@)?react-native|@react-native(-community)?|@react-navigation|react-native-vector-icons|react-native-gesture-handler|react-native-reanimated)/)',
   ],

@@ -3,28 +3,15 @@
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import AuthGuard from "@/components/AuthGuard";
-import Link from "next/link";
+import Link, { NavigationGuardProvider } from "@/components/NavigationGuard";
 import { useStore } from "@/store/useStore";
-import { applyWebTheme, getDevicePreferences } from "@/utils/devicePreferences";
+import DeviceTheme from "@/components/DeviceTheme";
 
 export default function AdminLayout({ children }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const fetchSettings = useStore(state => state.fetchSettings);
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const settings = useStore(state => state.settings);
-
-  useEffect(() => {
-    const applySavedTheme = () => applyWebTheme(getDevicePreferences().theme);
-    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
-
-    applySavedTheme();
-    systemTheme.addEventListener('change', applySavedTheme);
-    window.addEventListener('litepos-device-preferences', applySavedTheme);
-    return () => {
-      systemTheme.removeEventListener('change', applySavedTheme);
-      window.removeEventListener('litepos-device-preferences', applySavedTheme);
-    };
-  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -48,6 +35,8 @@ export default function AdminLayout({ children }) {
 
   return (
     <AuthGuard>
+      <DeviceTheme />
+      <NavigationGuardProvider>
       <div className="flex h-screen bg-gray-50">
         <Sidebar 
           isMobileOpen={isMobileOpen} 
@@ -73,6 +62,7 @@ export default function AdminLayout({ children }) {
           </main>
         </div>
       </div>
+      </NavigationGuardProvider>
     </AuthGuard>
   );
 }

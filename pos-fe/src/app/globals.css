@@ -33,6 +33,8 @@
     --color-primary-hover: var(--color-blue-600);
     --color-bg-main: var(--color-gray-50);
     --color-card: var(--color-white);
+    --app-border: var(--color-gray-200);
+    --app-foreground: var(--color-gray-800);
 
     --spacing: .25rem;
     --radius-2xl: 1rem;
@@ -48,58 +50,133 @@
   .card-base {
     background-color: var(--color-card);
     border-radius: var(--radius-2xl);
-    border: 1px solid var(--color-gray-200);
+    border: 1px solid var(--app-border);
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 
 body {
   background-color: var(--color-bg-main);
   font-family: var(--font-sans);
-  color: var(--color-gray-800);
+  color: var(--app-foreground);
 }
 
 /* Tema web disimpan per perangkat agar Kasir bebas mengubah tampilan tanpa
    mengubah konfigurasi outlet untuk perangkat lain. */
-html[data-theme='dark'] body,
-html[data-theme='dark'] .bg-gray-50,
-html[data-theme='dark'] [class~='bg-gray-50/50'] {
-  background-color: #0f172a !important;
+html[data-theme='dark'] {
+  --color-bg-main: #0b1220;
+  --color-card: #172235;
+  --app-border: #33445e;
+  --app-foreground: #e8eef7;
+  --app-muted: #a9b8ce;
+  --app-surface-muted: #1e2c42;
+  color-scheme: dark;
 }
 
-html[data-theme='dark'] .bg-white {
-  background-color: #111827 !important;
+/* Compatibility for existing utility-based screens. Semantic cards and plain
+   white cards use the same surface, while fields and the canvas stay distinct. */
+html[data-theme='dark'] :is(body, .bg-gray-50) {
+  background-color: var(--color-bg-main) !important;
 }
 
-html[data-theme='dark'] .bg-gray-100,
-html[data-theme='dark'] [class~='bg-gray-50/50'] {
-  background-color: #1f2937 !important;
+html[data-theme='dark'] :is(.bg-white, [class~='bg-white/50'], [class~='bg-white/80'], [class~='bg-white/90']) {
+  background-color: var(--color-card) !important;
 }
 
-html[data-theme='dark'] .text-gray-900,
-html[data-theme='dark'] .text-gray-800,
-html[data-theme='dark'] .text-gray-700 {
-  color: #f3f4f6 !important;
+html[data-theme='dark'] :is(.bg-gray-100, [class~='bg-gray-50/50'], [class~='bg-gray-100/50']) {
+  background-color: var(--app-surface-muted) !important;
 }
 
-html[data-theme='dark'] .text-gray-600,
-html[data-theme='dark'] .text-gray-500,
-html[data-theme='dark'] .text-gray-400 {
-  color: #9ca3af !important;
+html[data-theme='dark'] :is(.bg-gray-200, .bg-gray-300) {
+  background-color: #3b4c65 !important;
 }
 
-html[data-theme='dark'] .border-gray-100,
-html[data-theme='dark'] .border-gray-200,
-html[data-theme='dark'] .border-gray-300 {
-  border-color: #374151 !important;
+html[data-theme='dark'] :is(.text-gray-900, .text-gray-800, .text-gray-700) {
+  color: var(--app-foreground) !important;
 }
 
-html[data-theme='dark'] input,
-html[data-theme='dark'] textarea,
-html[data-theme='dark'] select {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-  color: #f3f4f6 !important;
+html[data-theme='dark'] :is(.text-gray-600, .text-gray-500, .text-gray-400, .text-gray-300) {
+  color: var(--app-muted) !important;
+}
+
+html[data-theme='dark'] :is(.border-gray-50, .border-gray-100, .border-gray-200, .border-gray-300) {
+  border-color: var(--app-border) !important;
+}
+
+html[data-theme='dark'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), textarea, select) {
+  background-color: #101b2d !important;
+  border-color: #425572 !important;
+  color: var(--app-foreground) !important;
+}
+
+html[data-theme='dark'] :is(input, textarea)::placeholder {
+  color: #93a5bf !important;
+}
+
+html[data-theme='dark'] :is(input, textarea, select):focus {
+  border-color: #60a5fa !important;
+  outline-color: #60a5fa;
+}
+
+html[data-theme='dark'] :is(.hover\:bg-gray-50, .hover\:bg-gray-100, .hover\:bg-white):hover {
+  background-color: #23334c !important;
+}
+
+/* Tinted surfaces retain their meaning without the bright light-mode fills. */
+html[data-theme='dark'] :is(.bg-blue-50, .bg-blue-100, [class~='bg-blue-50/50'], [class~='bg-blue-50/60']) { background-color: #152f50 !important; }
+html[data-theme='dark'] :is(.text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800) { color: #93c5fd !important; }
+html[data-theme='dark'] :is(.border-blue-100, .border-blue-200) { border-color: #31567e !important; }
+html[data-theme='dark'] :is(.bg-green-50, .bg-green-100, .bg-emerald-50, .bg-emerald-100) { background-color: #123b31 !important; }
+html[data-theme='dark'] :is(.text-green-500, .text-green-600, .text-green-700, .text-green-800, .text-emerald-600, .text-emerald-700) { color: #86efac !important; }
+html[data-theme='dark'] :is(.border-green-100, .border-green-200, .border-emerald-200) { border-color: #28634d !important; }
+html[data-theme='dark'] :is(.bg-red-50, .bg-red-100, .bg-rose-50, .bg-rose-100) { background-color: #482335 !important; }
+html[data-theme='dark'] :is(.text-red-500, .text-red-600, .text-red-700, .text-red-800, .text-rose-600, .text-rose-700) { color: #fda4af !important; }
+html[data-theme='dark'] :is(.border-red-100, .border-red-200) { border-color: #7b3d50 !important; }
+html[data-theme='dark'] :is(.bg-amber-50, .bg-amber-100, .bg-yellow-50, .bg-yellow-100, .bg-orange-50, .bg-orange-100) { background-color: #3e301d !important; }
+html[data-theme='dark'] :is(.text-amber-600, .text-amber-700, .text-amber-800, .text-yellow-600, .text-yellow-700, .text-yellow-800, .text-orange-500, .text-orange-600, .text-orange-700, .text-orange-800) { color: #fcd08b !important; }
+html[data-theme='dark'] :is(.border-amber-100, .border-amber-200, .border-yellow-200, .border-orange-100, .border-orange-200) { border-color: #705332 !important; }
+html[data-theme='dark'] :is(.bg-indigo-50, .bg-indigo-100, .bg-purple-50, .bg-purple-100, .bg-violet-50, .bg-violet-100) { background-color: #2d294f !important; }
+html[data-theme='dark'] :is(.text-indigo-500, .text-indigo-600, .text-indigo-700, .text-purple-600, .text-purple-700, .text-violet-600, .text-violet-700) { color: #c4b5fd !important; }
+html[data-theme='dark'] :is(.border-indigo-100, .border-indigo-200, .border-purple-200) { border-color: #55477f !important; }
+
+html[data-theme='dark'] :is(.from-blue-50, .from-amber-50, .from-yellow-50, .from-red-50, .from-gray-50) { --tw-gradient-from: #172235 !important; }
+html[data-theme='dark'] :is(.via-indigo-50, .via-blue-50) { --tw-gradient-via: #1e2c42 !important; }
+html[data-theme='dark'] :is(.to-blue-50, .to-orange-50, .to-amber-50, .to-red-50, .to-gray-50) { --tw-gradient-to: #1e2c42 !important; }
+
+html[data-theme='dark'] :is(.shadow-blue-100, .shadow-blue-200, .shadow-gray-100, .shadow-gray-200, .shadow-red-200, .shadow-amber-200) {
+  --tw-shadow-color: rgb(0 0 0 / 0.3) !important;
+}
+
+html[data-theme='dark'] .bg-yellow-400.text-gray-900 { color: #111827 !important; }
+html[data-theme='dark'] :is(main, .overflow-y-auto, .overflow-x-auto) { scrollbar-color: #43546b #101b2d; scrollbar-width: thin; }
+html[data-theme='dark'] .no-scrollbar { scrollbar-width: none; }
+html[data-theme='dark'] .swal2-popup { background-color: var(--color-card); color: var(--app-foreground); }
+html[data-theme='dark'] :is(.swal2-title, .swal2-html-container) { color: var(--app-foreground); }
+
+/* The app shell follows the theme; receipt paper always remains black on white
+   for preview, PNG download, sharing, and physical printing. */
+[data-print-surface] {
+  background-color: #fff !important;
+  color: #000 !important;
+  color-scheme: light;
+}
+
+html[data-theme='dark'] [data-print-surface] {
+  background-color: #fff !important;
+  color: #000 !important;
+}
+
+html[data-theme='dark'] [data-print-surface] * {
+  color: #000 !important;
+  border-color: #000 !important;
 }
 
 

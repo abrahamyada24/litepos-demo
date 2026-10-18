@@ -89,7 +89,7 @@ export default function CartSidebar({
         <div className="px-6 py-2 border-b border-gray-50 space-y-3">
             {selectedMember ? (
                 <div className="flex items-center justify-between text-sm bg-blue-50 text-blue-700 px-3 py-2 rounded-lg border border-blue-100">
-                    <span className="font-bold flex items-center gap-2"><User size={14}/> {selectedMember.name}</span>
+                    <span className="font-bold"><span className="flex items-center gap-2"><User size={14}/> {selectedMember.name}</span><span className="mt-1 block text-xs font-medium">Saldo: {Number(selectedMember.points || 0).toLocaleString('id-ID')} poin</span></span>
                     <button onClick={()=>setSelectedMember(null)}><X size={14}/></button>
                 </div>
             ) : (

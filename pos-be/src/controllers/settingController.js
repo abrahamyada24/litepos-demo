@@ -186,11 +186,17 @@ exports.updateLoyaltyConfig = async (req, res) => {
         minRedemptionPoints: parseInt(minRedemptionPoints),
         isActive: isActive === true || isActive === 'true'
     };
+    if (!Number.isInteger(data.pointMultiplier) || data.pointMultiplier < 1 ||
+        !Number.isFinite(data.multiplierAmount) || data.multiplierAmount <= 0 ||
+        !Number.isFinite(data.pointValue) || data.pointValue <= 0 ||
+        !Number.isInteger(Number(minRedemptionPoints)) || data.minRedemptionPoints < 1) {
+      return res.status(400).json({ success: false, message: 'Kelipatan belanja dan nilai poin harus lebih dari nol. Poin dan minimum penukaran harus bilangan bulat positif.' });
+    }
 
     const updated = await prisma.loyaltyConfig.upsert({
         where: { id: id },
         update: data,
-        create: { id: 1, ...data }
+        create: data
     });
 
     res.json({ success: true, message: "Konfigurasi loyalitas disimpan", data: updated });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, UploadCloud, User, Save, ImageIcon, LayoutGrid, ShoppingBag, Coins } from 'lucide-react';
+import { restrictPhoneInput, validatePhoneInput } from '@/utils/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -17,6 +18,7 @@ export default function CustomerModal({ isOpen, onClose, onSave, initialData }) 
     imageFile: null
   });
   const [previewUrl, setPreviewUrl] = useState('');
+  const phoneError = validatePhoneInput(formData.phone);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,6 +60,7 @@ export default function CustomerModal({ isOpen, onClose, onSave, initialData }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (phoneError) return;
     onSave(formData);
   };
 
@@ -147,12 +150,16 @@ export default function CustomerModal({ isOpen, onClose, onSave, initialData }) 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">No. Telepon <span className="text-gray-400 text-xs">(Unik)</span></label>
                         <input 
-                            type="text" 
+                            type="tel"
+                            inputMode="tel"
+                            maxLength={16}
+                            aria-invalid={Boolean(phoneError)}
                             value={formData.phone}
-                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                            onChange={(e) => setFormData({...formData, phone: restrictPhoneInput(e.target.value)})}
                             className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
                             placeholder="0812..."
                         />
+                        {phoneError && <p className="mt-1 text-xs text-red-600" role="alert">{phoneError}</p>}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>

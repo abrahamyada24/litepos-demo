@@ -9,6 +9,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { resolveApiAssetUrl } from '../services/api';
 import api from '../services/api';
 import { useStore } from '../store/useStore';
+import { restrictPhoneInput, normalizeCustomerPhone, customerPhoneAliases } from '../utils/customerPhone';
 
 type ContactTab = 'supplier' | 'customer';
 
@@ -124,6 +125,9 @@ export default function ContactScreen({ navigation }: any) {
 
     const handleSave = async () => {
         if (!formName.trim()) return Alert.alert('Validasi', 'Nama wajib diisi.');
+        if (activeTab === 'customer') {
+            try { normalizeCustomerPhone(formPhone); } catch (error: any) { return Alert.alert('Validasi', error.message); }
+        }
         if (formPhone.trim().length > 20) return Alert.alert('Validasi', 'Nomor telepon maksimal 20 karakter.');
         try {
             const db = await getDBConnection();
@@ -145,10 +149,12 @@ export default function ContactScreen({ navigation }: any) {
                     ? parseInt(formPoints.replace(/[^0-9]/g, '') || '0')
                     : Number(editing?.points || 0);
                 if (loyalty < 0 || loyalty > 100) return Alert.alert('Validasi', 'Diskon pelanggan harus antara 0 sampai 100%.');
-                if (formPhone.trim()) {
+                const phone = normalizeCustomerPhone(formPhone);
+                if (phone) {
+                    const aliases = customerPhoneAliases(phone);
                     const [duplicateResult] = await db.executeSql(
-                        'SELECT id FROM customers WHERE phone = ? AND id != ? LIMIT 1',
-                        [formPhone.trim(), editing?.id || -1]
+                        `SELECT id FROM customers WHERE phone IN (${aliases.map(() => '?').join(',')}) AND id != ? LIMIT 1`,
+                        [...aliases, editing?.id || -1]
                     );
                     if (duplicateResult.rows.length > 0) return Alert.alert('Nomor sudah terdaftar', 'Pilih atau edit pelanggan yang sudah menggunakan nomor tersebut.');
                 }
@@ -156,12 +162,12 @@ export default function ContactScreen({ navigation }: any) {
                     const pointsManuallyEdited = canEditPoints && points !== Number(editing.points || 0) ? 1 : Number(editing.pointsManuallyEdited || 0);
                     await db.executeSql(
                         'UPDATE customers SET name = ?, phone = ?, email = ?, notes = ?, imageUrl = ?, displayType = ?, loyaltyDiscount = ?, points = ?, pointsManuallyEdited = ?, isSynced = 0 WHERE id = ?',
-                        [formName.trim(), formPhone.trim() || null, formEmail.trim() || null, formNotes.trim() || null, formImageUrl || null, formDisplayType, loyalty, points, pointsManuallyEdited, editing.id]
+                        [formName.trim(), phone, formEmail.trim() || null, formNotes.trim() || null, formImageUrl || null, formDisplayType, loyalty, points, pointsManuallyEdited, editing.id]
                     );
                 } else {
                     await db.executeSql(
                         'INSERT INTO customers (name, phone, email, notes, imageUrl, displayType, loyaltyDiscount, points, pointsManuallyEdited, isSynced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-                        [formName.trim(), formPhone.trim() || null, formEmail.trim() || null, formNotes.trim() || null, formImageUrl || null, formDisplayType, loyalty, points, canEditPoints && points > 0 ? 1 : 0]
+                        [formName.trim(), phone, formEmail.trim() || null, formNotes.trim() || null, formImageUrl || null, formDisplayType, loyalty, points, canEditPoints && points > 0 ? 1 : 0]
                     );
                 }
             }
@@ -391,7 +397,8 @@ export default function ContactScreen({ navigation }: any) {
                                 placeholderTextColor={tw.color('gray-400')}
                                 keyboardType="phone-pad"
                                 value={formPhone}
-                                onChangeText={setFormPhone}
+                                onChangeText={value => setFormPhone(activeTab === 'customer' ? restrictPhoneInput(value) : value)}
+                                maxLength={activeTab === 'customer' ? 16 : 20}
                             />
 
                             {activeTab === 'customer' && (

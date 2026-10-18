@@ -1,5 +1,6 @@
 const { basePrisma, prisma } = require('../config/prisma');
 const bcrypt = require('bcryptjs');
+const { randomUUID } = require('node:crypto');
 const {
   LOGIN_LOCK_DURATION_MS,
   LOGIN_LOCK_THRESHOLD,
@@ -90,6 +91,9 @@ exports.registerBusiness = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Nama maksimal 255 karakter.' });
     }
     if (passwordError) return res.status(400).json({ success: false, message: passwordError });
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+      return res.status(503).json({ success: false, code: 'AUTH_CONFIG_MISSING', message: 'Konfigurasi login server belum lengkap. Pengelola perlu mengisi JWT_SECRET pada backend lalu redeploy.' });
+    }
     if (!['RETAIL', 'FNB', 'LAUNDRY'].includes(normalizedBusinessType)) {
       return res.status(400).json({ success: false, message: 'Jenis usaha tidak valid.' });
     }
@@ -115,7 +119,9 @@ exports.registerBusiness = async (req, res) => {
       return res.status(409).json({
         success: false,
         code: 'ACCOUNT_ALREADY_EXISTS',
-        message: 'Email atau username sudah digunakan. Silakan login atau gunakan akun lain.',
+        message: existingUser.email === normalizedEmail
+          ? 'Email sudah terdaftar. Silakan login dengan akun tersebut.'
+          : 'Username sudah digunakan. Pilih username lain atau kosongkan agar dibuat otomatis.',
       });
     }
 
@@ -188,19 +194,17 @@ exports.registerBusiness = async (req, res) => {
         },
       });
 
-      return { user, store };
-    });
+      // Semua data dan sesi pertama harus berhasil bersama-sama. Kegagalan
+      // sesi tidak boleh meninggalkan email terdaftar tanpa bisa masuk.
+      const memberships = await listActiveMemberships(tx, user.id);
+      const { session, token } = await createAuthSession({
+        prisma: tx, user, activeStoreId: store.id, clientType: 'WEB',
+        deviceName: 'Web POS', ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return { user, store, memberships, session, token };
+    }, { maxWait: 10000, timeout: 20000 });
 
-    const memberships = await listActiveMemberships(basePrisma, registration.user.id);
-    const { session, token } = await createAuthSession({
-      prisma: basePrisma,
-      user: registration.user,
-      activeStoreId: registration.store.id,
-      clientType: 'WEB',
-      deviceName: 'Web POS',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-    });
+    const { memberships, session, token } = registration;
 
     res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
     return res.status(201).json({
@@ -219,8 +223,21 @@ exports.registerBusiness = async (req, res) => {
         message: 'Email, username, atau slug usaha sudah digunakan.',
       });
     }
-    console.error(`[REGISTER BUSINESS ERROR]: ${error.message}`);
-    return res.status(500).json({ success: false, message: 'Pendaftaran usaha belum dapat diproses.' });
+    const reference = randomUUID();
+    const isTimeout = ['P2028', 'P2024', 'P1001', 'P1002', 'P1017'].includes(error.code);
+    const schemaOutdated = ['P2021', 'P2022'].includes(error.code);
+    // Jangan mencatat payload pendaftaran atau password ke log.
+    console.error('[REGISTER BUSINESS ERROR]', JSON.stringify({ reference, code: error.code || 'INTERNAL_ERROR', type: error.name }));
+    return res.status(isTimeout ? 503 : 500).json({
+      success: false,
+      code: isTimeout ? 'REGISTRATION_RETRY' : schemaOutdated ? 'REGISTRATION_SCHEMA_OUTDATED' : 'REGISTRATION_FAILED',
+      reference,
+      message: isTimeout
+        ? 'Koneksi pendaftaran sedang lambat. Tunggu sebentar lalu coba kembali.'
+        : schemaOutdated
+          ? 'Struktur database belum sesuai versi aplikasi. Pengelola perlu memperbarui schema backend.'
+          : `Pendaftaran usaha belum dapat diproses. Referensi: ${reference}`,
+    });
   }
 };
 

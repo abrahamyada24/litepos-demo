@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigationGuard } from '@/components/NavigationGuard';
 import { 
   Save, Store, CreditCard, ShieldCheck, UploadCloud, 
   Receipt, Printer, Smartphone, DollarSign, Loader2, Image as ImageIcon,
@@ -19,8 +20,13 @@ import {
 } from '../../../utils/devicePreferences';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const settingsSignature = value => JSON.stringify(value, (key, item) =>
+  ['taxRate', 'serviceCharge', 'shiftDurationMinutes', 'shiftReminderMinutes', 'pointMultiplier', 'multiplierAmount', 'pointValue', 'minRedemptionPoints'].includes(key) ? Number(item) : item);
 
 export default function SettingsPage() {
+  const navigation = useNavigationGuard();
+  const savedForm = useRef(null);
+  const savedLoyalty = useRef(null);
   const { settings, fetchDataMaster, fetchSettings, user } = useStore();
   const canManageBusinessSettings = user?.role === 'OWNER' || user?.role === 'ADMIN';
   const [activeTab, setActiveTab] = useState(canManageBusinessSettings ? 'general' : 'theme');
@@ -61,6 +67,13 @@ export default function SettingsPage() {
   });
 
   const [logoPreview, setLogoPreview] = useState('');
+  const formRef = useRef(form);
+  const loyaltyRef = useRef(loyaltyForm);
+  formRef.current = form;
+  loyaltyRef.current = loyaltyForm;
+  const hasSettingsChanges = Boolean(savedForm.current && settingsSignature(form) !== settingsSignature(savedForm.current));
+  const hasLoyaltyChanges = Boolean(savedLoyalty.current && settingsSignature(loyaltyForm) !== settingsSignature(savedLoyalty.current));
+  const hasUnsavedChanges = hasSettingsChanges || hasLoyaltyChanges;
 
   const [passForm, setPassForm] = useState({
     oldPassword: '',
@@ -91,6 +104,8 @@ export default function SettingsPage() {
         });
         const data = await res.json();
         if (data.success && data.data) {
+            if (savedLoyalty.current && settingsSignature(loyaltyRef.current) !== settingsSignature(savedLoyalty.current)) return;
+            savedLoyalty.current = data.data;
             setLoyaltyForm(data.data);
         }
     } catch (e) { console.error(e); }
@@ -98,7 +113,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (settings) {
-      setForm({
+      if (savedForm.current && settingsSignature(formRef.current) !== settingsSignature(savedForm.current)) return;
+      const nextForm = {
         storeName: settings.storeName || '',
         phone: settings.phone || '',
         address: settings.address || '',
@@ -121,7 +137,9 @@ export default function SettingsPage() {
         shiftDurationMinutes: Number(settings.shiftDurationMinutes) || 480,
         shiftReminderMinutes: Number.isFinite(Number(settings.shiftReminderMinutes)) ? Number(settings.shiftReminderMinutes) : 15,
         shiftDayCutoff: settings.shiftDayCutoff || '23:50'
-      });
+      };
+      savedForm.current = nextForm;
+      setForm(nextForm);
       if (settings.logoUrl) {
           setLogoPreview(settings.logoUrl.startsWith('http') ? settings.logoUrl : `${API_URL}${settings.logoUrl}`);
       }
@@ -146,10 +164,10 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = async ({ silent = false } = {}) => {
     if (!canManageBusinessSettings) {
       showAlert.error('Akses ditolak', 'Pengaturan outlet hanya dapat diubah oleh Admin atau Owner.');
-      return;
+      return false;
     }
     setIsLoading(true);
     try {
@@ -177,11 +195,14 @@ export default function SettingsPage() {
 
         // Endpoint settings jauh lebih ringan daripada memuat semua master data
         // dan langsung memicu render ulang menu Sidebar.
+        savedForm.current = { ...form };
         await fetchSettings();
-        showAlert.success('Pengaturan tersimpan', 'Konfigurasi aplikasi berhasil diperbarui.');
+        if (!silent) showAlert.success('Pengaturan tersimpan', 'Konfigurasi aplikasi berhasil diperbarui.');
+        return true;
 
     } catch (error) {
         showAlert.error('Gagal menyimpan pengaturan', error.message);
+        return false;
     } finally {
         setIsLoading(false);
     }
@@ -196,7 +217,7 @@ export default function SettingsPage() {
     : '';
   const paperWidthMm = getPaperWidthMm(devicePreferences);
 
-  const handleSaveLoyalty = async () => {
+  const handleSaveLoyalty = async ({ silent = false } = {}) => {
     setIsLoading(true);
     try {
         const token = localStorage.getItem('token');
@@ -209,13 +230,44 @@ export default function SettingsPage() {
             body: JSON.stringify(loyaltyForm)
         });
 
-        if (!res.ok) throw new Error("Gagal menyimpan konfigurasi loyalitas");
-        showAlert.success('Loyalitas tersimpan', 'Konfigurasi loyalitas berhasil diperbarui.');
+        const result = await res.json();
+        if (!res.ok || !result.success) throw new Error(result.message || "Gagal menyimpan konfigurasi loyalitas");
+        savedLoyalty.current = result.data || { ...loyaltyForm };
+        setLoyaltyForm(result.data || { ...loyaltyForm });
+        if (!silent) showAlert.success('Loyalitas tersimpan', 'Konfigurasi loyalitas berhasil diperbarui.');
+        return true;
     } catch (error) {
         showAlert.error('Gagal menyimpan loyalitas', error.message);
+        return false;
     } finally {
         setIsLoading(false);
     }
+  };
+
+  const saveAllChanges = async () => {
+    if (isLoading) return false;
+    if (hasSettingsChanges && !await handleSaveSettings({ silent: true })) return false;
+    if (hasLoyaltyChanges && !await handleSaveLoyalty({ silent: true })) return false;
+    return true;
+  };
+
+  const discardChanges = () => {
+    if (savedForm.current) setForm({ ...savedForm.current });
+    if (savedLoyalty.current) setLoyaltyForm({ ...savedLoyalty.current });
+    setLogoPreview(settings?.logoUrl ? (settings.logoUrl.startsWith('http') ? settings.logoUrl : `${API_URL}${settings.logoUrl}`) : '');
+  };
+
+  useEffect(() => navigation?.setGuard({
+    isDirty: () => hasUnsavedChanges,
+    save: saveAllChanges,
+    discard: discardChanges,
+    url: window.location.href,
+    historyState: window.history.state,
+  }), [navigation, form, loyaltyForm, isLoading, hasUnsavedChanges]);
+
+  const changeTab = async id => {
+    if (id === activeTab) return;
+    if (!navigation || await navigation.confirmNavigation()) setActiveTab(id);
   };
 
   const handleUpdatePassword = async () => {
@@ -253,7 +305,7 @@ export default function SettingsPage() {
 
   const TabButton = ({ id, label, icon: Icon }) => (
     <button
-      onClick={() => setActiveTab(id)}
+      onClick={() => changeTab(id)}
       className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all whitespace-nowrap ${
         activeTab === id 
           ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-sm' 
@@ -295,7 +347,7 @@ export default function SettingsPage() {
         }
       `}</style>
 
-      <div id="settings-printer-test" className="hidden text-[10px] leading-tight">
+      <div id="settings-printer-test" data-print-surface className="hidden text-[10px] leading-tight">
         {printableLogoUrl && (
           <img className="receipt-logo" src={printableLogoUrl} alt="Logo toko" />
         )}
@@ -307,14 +359,15 @@ export default function SettingsPage() {
         <div className="text-center">Printer browser siap digunakan</div>
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="sticky -top-4 sm:-top-6 lg:-top-8 z-30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50 py-4 border-b border-gray-200">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Pengaturan</h2>
           <p className="text-gray-400 text-sm">Kelola profil toko, pembayaran, dan sistem.</p>
+          {hasUnsavedChanges && <p role="status" className="mt-1 text-xs font-bold text-amber-700">Perubahan belum disimpan</p>}
         </div>
         {canManageBusinessSettings && !['security', 'theme', 'printer', 'about'].includes(activeTab) && (
             <button 
-                onClick={activeTab === 'loyalty' ? handleSaveLoyalty : handleSaveSettings}
+                onClick={async () => { if (await saveAllChanges()) showAlert.success('Pengaturan tersimpan', 'Semua perubahan berhasil disimpan.'); }}
                 disabled={isLoading}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 shadow-lg shadow-blue-200 transition-colors font-medium disabled:opacity-70"
             >

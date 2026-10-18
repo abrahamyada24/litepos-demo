@@ -49,11 +49,18 @@ releases/
 *.pem
 *.key
 *.p12
-key.txt
-key-vercel-tidb.txt
+key*.txt
+keystore.properties
+*.keystore
+!debug.keystore
+*.jks
+*.pfx
+.env.*
+!.env.example
+!**/.env.example
 *.sql
 !pos-be/prisma/migrations/**/*.sql
-pos-android/generator.html
+generator.html
 pos-android/.license-generator-private.jwk
 
 .vercel

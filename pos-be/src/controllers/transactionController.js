@@ -3,6 +3,8 @@ const midtransClient = require('midtrans-client');
 const { getProductPrice } = require('../utils/productDiscount');
 const { normalizePaymentType, resolvePaymentMethod } = require('../services/paymentMethodService');
 const { resolveSelectedAddons, buildAddonItemNotes, calculateAddonAwareLinePricing } = require('../services/productAddonService');
+const { calculateCheckoutTotals } = require('../services/checkoutTotalsService');
+const { awardTransactionPoints, reverseTransactionPoints } = require('../services/transactionLoyaltyService');
 
 const normalizeIdempotencyKey = (value) => {
     if (value === undefined || value === null || value === '') return null;
@@ -222,30 +224,20 @@ exports.createTransaction = async (req, res) => {
             // Hitung pajak
             const taxRate = setting?.taxRate ? Number(setting.taxRate) / 100 : 0;
 
-            // Calculate discount (support percent and amount modes)
-            let discount = 0;
-            if (discountType === 'percent') {
-                discount = subTotal * (parseFloat(discountAmount) / 100);
-            } else {
-                discount = parseFloat(discountAmount) || 0;
-            }
-
             // Loyalty points redemption discount
             let loyaltyDiscount = 0;
-            if (parseInt(loyaltyPointsRedeemed) > 0 && customerId) {
+            const redeemedPoints = Number(loyaltyPointsRedeemed || 0);
+            if (!Number.isSafeInteger(redeemedPoints) || redeemedPoints < 0) throw new Error('Jumlah poin penukaran tidak valid.');
+            if (redeemedPoints > 0) {
+                if (!customerId || !isInstantPayment) throw new Error('Penukaran poin membutuhkan member dan pembayaran manual yang langsung lunas.');
                 const loyaltyConfig = await tx.loyaltyConfig.findFirst({ where: { isActive: true } });
-                if (loyaltyConfig) {
-                    const customer = await tx.customer.findUnique({ where: { id: parseInt(customerId) } });
-                    if (customer && customer.points >= parseInt(loyaltyPointsRedeemed) && parseInt(loyaltyPointsRedeemed) >= loyaltyConfig.minRedemptionPoints) {
-                        loyaltyDiscount = parseInt(loyaltyPointsRedeemed) * Number(loyaltyConfig.pointValue);
-                        discount += loyaltyDiscount;
-                    }
-                }
+                const customer = await tx.customer.findUnique({ where: { id: parseInt(customerId) } });
+                if (!loyaltyConfig || !customer || customer.points < redeemedPoints || redeemedPoints < loyaltyConfig.minRedemptionPoints) throw new Error('Poin tidak mencukupi atau belum memenuhi minimum penukaran.');
+                loyaltyDiscount = redeemedPoints * Number(loyaltyConfig.pointValue);
+                const manual = calculateCheckoutTotals({ subTotal, taxRate, discountAmount, discountType });
+                if (loyaltyDiscount > subTotal - manual.discount) throw new Error('Nilai penukaran poin melebihi sisa tagihan.');
             }
-
-            const taxableAmount = subTotal - discount;
-            const taxAmount = Math.round(taxableAmount * taxRate);
-            const grandTotal = taxableAmount + taxAmount;
+            const { discount, taxAmount, grandTotal } = calculateCheckoutTotals({ subTotal, taxRate, discountAmount, discountType, loyaltyDiscount });
 
             // Generate Invoice unik
             const invoiceNumber = await generateInvoiceNumber(tx);
@@ -259,6 +251,7 @@ exports.createTransaction = async (req, res) => {
                     name: `Pajak (PPN ${setting.taxRate || 0}%)`
                 });
             }
+            if (discount > 0) itemDetailsForMidtrans.push({ id: 'DISCOUNT', price: -discount, quantity: 1, name: 'Diskon transaksi' });
 
             const initialStatus = isInstantPayment ? 'PAID' : 'PENDING';
             const paymentStatus = isInstantPayment ? 'SETTLEMENT' : 'PENDING';
@@ -329,19 +322,8 @@ exports.createTransaction = async (req, res) => {
                 include: { items: true, payments: true }
             });
 
-            // Loyalty points earning
-            if (customerId && isInstantPayment) {
-                const loyaltyConfig = await tx.loyaltyConfig.findFirst({ where: { isActive: true } });
-                if (loyaltyConfig) {
-                    const earnedPoints = Math.floor(Number(grandTotal) / Number(loyaltyConfig.multiplierAmount)) * Number(loyaltyConfig.pointMultiplier);
-                    const pointsChange = earnedPoints - (parseInt(loyaltyPointsRedeemed) || 0);
-
-                    await tx.customer.update({
-                        where: { id: parseInt(customerId) },
-                        data: { points: { increment: pointsChange } }
-                    });
-                }
-            }
+            const loyaltySnapshot = await awardTransactionPoints(tx, newTransaction, redeemedPoints);
+            if (loyaltySnapshot) Object.assign(newTransaction, loyaltySnapshot);
 
             let midtransToken = null;
             let midtransUrl = null;
@@ -590,11 +572,16 @@ exports.handleMidtransNotification = async (req, res) => {
 
         // Update database dalam satu transaksi
         await runWithStore(locator.storeId, () => prisma.$transaction(async (tx) => {
-            // Update transaction status
-            await tx.transaction.update({
-                where: { invoiceNumber: orderId },
+            const current = await tx.transaction.findUnique({ where: { id: transaction.id } });
+            if (!current || ['RETURNED', 'CANCELLED', 'COMPLETED'].includes(current.status)) return;
+            if (current.status === 'PAID' && newStatus === 'PENDING') return;
+            const changed = await tx.transaction.updateMany({
+                where: { id: current.id, status: current.status },
                 data: { status: newStatus }
             });
+            if (changed.count !== 1) return;
+            if (newStatus === 'PAID') await awardTransactionPoints(tx, { ...current, status: newStatus });
+            if (newStatus === 'CANCELLED') await reverseTransactionPoints(tx, current);
 
             // Update payment status - PERBAIKAN QUERY
             await tx.payment.updateMany({
@@ -606,7 +593,7 @@ exports.handleMidtransNotification = async (req, res) => {
             });
 
             // JIKA PAID, KURANGI STOCK (untuk non-CASH payment)
-            if (newStatus === 'PAID' && transaction.status !== 'PAID') {
+            if (newStatus === 'PAID' && current.status !== 'PAID') {
                 console.log('[OK] Payment confirmed! Reducing stock...');
 
                 for (const item of transaction.items) {
@@ -636,7 +623,7 @@ exports.handleMidtransNotification = async (req, res) => {
             }
 
             // JIKA CANCELLED/EXPIRED, CEK APAKAH PERLU ROLLBACK STOCK
-            if (newStatus === 'CANCELLED' && transaction.status === 'PAID') {
+            if (newStatus === 'CANCELLED' && current.status === 'PAID') {
                 console.log('[INFO] Transaction cancelled after payment, restoring stock...');
 
                 // Cari stock movements yang terkait
@@ -724,10 +711,16 @@ exports.checkTransactionStatus = async (req, res) => {
 
         if (newStatus && transaction.status !== newStatus) {
             await prisma.$transaction(async (tx) => {
-                await tx.transaction.update({
-                    where: { invoiceNumber: invoiceNumber },
+                const current = await tx.transaction.findUnique({ where: { id: transaction.id } });
+                if (!current || ['RETURNED', 'CANCELLED', 'COMPLETED'].includes(current.status)) return;
+                if (current.status === 'PAID' && newStatus === 'PENDING') return;
+                const changed = await tx.transaction.updateMany({
+                    where: { id: current.id, status: current.status },
                     data: { status: newStatus }
                 });
+                if (changed.count !== 1) return;
+                if (newStatus === 'PAID') await awardTransactionPoints(tx, { ...current, status: newStatus });
+                if (newStatus === 'CANCELLED') await reverseTransactionPoints(tx, current);
 
                 await tx.payment.updateMany({
                     where: { transactionId: transaction.id },
@@ -738,7 +731,7 @@ exports.checkTransactionStatus = async (req, res) => {
                 });
 
                 // Kurangi stock jika baru jadi PAID
-                if (newStatus === 'PAID' && transaction.status !== 'PAID') {
+                if (newStatus === 'PAID' && current.status !== 'PAID') {
                     for (const item of transaction.items) {
                         const product = await tx.product.findUnique({
                             where: { id: item.productId }
@@ -810,10 +803,12 @@ exports.returnTransaction = async (req, res) => {
 
         await prisma.$transaction(async (tx) => {
             // Update transaction status
-            await tx.transaction.update({
-                where: { id: parseInt(id) },
+            const changed = await tx.transaction.updateMany({
+                where: { id: parseInt(id), status: { in: ['PAID', 'COMPLETED'] } },
                 data: { status: 'RETURNED' }
             });
+            if (changed.count !== 1) throw new Error('Hanya transaksi lunas yang dapat diretur atau transaksi sudah diproses.');
+            await reverseTransactionPoints(tx, transaction);
 
             // Revert stock
             for (const item of transaction.items) {

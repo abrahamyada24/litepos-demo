@@ -167,6 +167,7 @@ export function buildReportExport(activeTab, data) {
           { component: "Laba kotor", amount: report.grossProfit },
           { component: "Pengeluaran", amount: -(Number(report.totalExpenses) || 0) },
           { component: "Laba bersih", amount: report.netProfit },
+          ...(report.expenseBreakdown || []).map(item => ({ component: `Rincian pengeluaran: ${item.category}`, amount: -(Number(item.amount) || 0) })),
         ],
       };
     }

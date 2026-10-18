@@ -7,7 +7,7 @@ import {
   Wallet, Clock, Truck, BadgeCheck
   , Building2, Loader2
 } from 'lucide-react';
-import Link from 'next/link';
+import Link, { useNavigationGuard } from './NavigationGuard';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '../store/useStore';
 import { showAlert } from '../utils/swal';
@@ -55,6 +55,7 @@ const SidebarItem = ({ icon: Icon, label, href, hasSubmenu, isOpen, onClick, bad
 };
 
 export default function Sidebar({ isMobileOpen, setIsMobileOpen }) {
+  const navigation = useNavigationGuard();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -109,6 +110,7 @@ export default function Sidebar({ isMobileOpen, setIsMobileOpen }) {
   };
 
   const handleLogout = async () => {
+    if (navigation && !await navigation.confirmNavigation()) return;
     const confirm = await showAlert.confirm("Keluar Kasir?", "Sesi Anda akan berakhir.");
     if (confirm) {
       await logout();
@@ -119,6 +121,7 @@ export default function Sidebar({ isMobileOpen, setIsMobileOpen }) {
   const handleStoreChange = async (event) => {
     const storeId = Number(event.target.value);
     if (!storeId || storeId === activeStore?.id || isSwitchingStore) return;
+    if (navigation && !await navigation.confirmNavigation()) return;
     if (cart.length > 0) {
       const confirmed = await showAlert.confirm(
         'Ganti usaha?',

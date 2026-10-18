@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   X, UploadCloud, Save, LayoutGrid, Package,
-  DollarSign, Tag, Info, Edit3, Boxes,
+  Tag, Info, Edit3, Boxes,
   Monitor, CheckCircle2, AlertCircle, Trash2, Plus, ScanBarcode,
   Percent, CalendarClock
 } from 'lucide-react';
@@ -345,9 +345,9 @@ export default function ProductModal({ isOpen, onClose, onSave, initialData, cat
                 {/* Pricing Section */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 p-4 sm:p-8 bg-gray-50 rounded-2xl sm:rounded-[2.5rem] border border-gray-100 shadow-inner">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest block ml-1">Customer Price (Sell)</label>
+                    <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest block ml-1">Harga Jual</label>
                     <div className="relative">
-                      <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-500" size={20} />
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-blue-500">Rp</span>
                       <CurrencyInput
                         required
                         value={formData.price}
@@ -358,9 +358,9 @@ export default function ProductModal({ isOpen, onClose, onSave, initialData, cat
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Base Cost (HPP)</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Harga Pokok (HPP)</label>
                     <div className="relative opacity-60 hover:opacity-100 transition-opacity">
-                      <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-400">Rp</span>
                       <CurrencyInput
                         value={formData.costPrice}
                         onChange={(value) => setFormData({ ...formData, costPrice: value })}

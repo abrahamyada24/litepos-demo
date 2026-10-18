@@ -543,7 +543,7 @@ export default function ReportsPage() {
                                     {profitLossData?.expenseBreakdown?.map((cat, idx) => (
                                         <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
                                             <td className="px-6 py-4 font-medium text-gray-600">{cat.category}</td>
-                                            <td className="px-6 py-4 font-bold text-red-500 text-right">{formatRp(cat.total)}</td>
+                                            <td className="px-6 py-4 font-bold text-red-500 text-right">{formatRp(cat.amount)}</td>
                                         </tr>
                                     ))}
                                     {profitLossData?.expenseBreakdown?.length === 0 && (

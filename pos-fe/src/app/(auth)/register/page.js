@@ -55,14 +55,14 @@ export default function RegisterBusinessPage() {
       businessName: form.businessName,
       businessType: form.businessType,
       ownerName: form.ownerName,
-      email: form.email,
-      username: form.username || undefined,
+      email: form.email.trim().toLowerCase(),
+      username: form.username.trim() || undefined,
       password: form.password,
     });
     setIsLoading(false);
 
     if (!result.success) {
-      showAlert.error('Pendaftaran gagal', result.message);
+      showAlert.error('Pendaftaran gagal', `${result.message}${result.code ? ` (${result.code})` : ''}`);
       return;
     }
 

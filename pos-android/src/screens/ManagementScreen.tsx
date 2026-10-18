@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, FlatList, TextInput, Alert, Modal, Scroll
 import { launchImageLibrary } from 'react-native-image-picker';
 import tw, { useAppColorScheme } from 'twrnc';
 import { getDBConnection } from '../database/db';
+import { restrictPhoneInput, normalizeCustomerPhone, customerPhoneAliases } from '../utils/customerPhone';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useStore } from '../store/useStore';
 import StockReceivingScreen from './StockReceivingScreen';
@@ -291,14 +292,21 @@ export default function ManagementScreen({ navigation }: any) {
     // ── Customer Handlers ─────────────────────────────────────────────────────
     const handleSaveCustomer = async () => {
         if (!customerName.trim()) return Alert.alert('Validasi', 'Nama pelanggan wajib diisi.');
+        let phone: string | null;
+        try { phone = normalizeCustomerPhone(customerPhone); } catch (error: any) { return Alert.alert('Validasi', error.message); }
         try {
             const db = await getDBConnection();
+            if (phone) {
+                const aliases = customerPhoneAliases(phone);
+                const [duplicate] = await db.executeSql(`SELECT id FROM customers WHERE phone IN (${aliases.map(() => '?').join(',')}) AND id != ? LIMIT 1`, [...aliases, editingCustomer?.id || -1]);
+                if (duplicate.rows.length > 0) return Alert.alert('Nomor sudah terdaftar', 'Pilih atau edit pelanggan dengan nomor tersebut.');
+            }
             const loyaltyDiscount = parseFloat(customerLoyaltyDiscount.replace(/[^0-9.]/g, '') || '0');
             const pointsValue = parseInt(customerPoints.replace(/[^0-9]/g, '') || '0', 10);
             if (editingCustomer) {
-                await db.executeSql('UPDATE customers SET name = ?, phone = ?, notes = ?, loyaltyDiscount = ?, points = ?, isSynced = 0 WHERE id = ?', [customerName, customerPhone, customerNotes, loyaltyDiscount, pointsValue, editingCustomer.id]);
+                await db.executeSql('UPDATE customers SET name = ?, phone = ?, notes = ?, loyaltyDiscount = ?, points = ?, isSynced = 0 WHERE id = ?', [customerName, phone, customerNotes, loyaltyDiscount, pointsValue, editingCustomer.id]);
             } else {
-                await db.executeSql('INSERT INTO customers (name, phone, notes, loyaltyDiscount, points) VALUES (?, ?, ?, ?, ?)', [customerName, customerPhone, customerNotes, loyaltyDiscount, pointsValue]);
+                await db.executeSql('INSERT INTO customers (name, phone, notes, loyaltyDiscount, points) VALUES (?, ?, ?, ?, ?)', [customerName, phone, customerNotes, loyaltyDiscount, pointsValue]);
             }
             setCustomerModalVisible(false);
             resetForms();
@@ -958,7 +966,8 @@ export default function ManagementScreen({ navigation }: any) {
                                 placeholder="08xx-xxxx-xxxx"
                                 keyboardType="phone-pad"
                                 value={customerPhone}
-                                onChangeText={setCustomerPhone}
+                                onChangeText={value => setCustomerPhone(restrictPhoneInput(value))}
+                                maxLength={16}
                             />
                             <Text style={tw`font-bold text-gray-700 dark:text-gray-200 mb-2`}>Catatan</Text>
                             <TextInput

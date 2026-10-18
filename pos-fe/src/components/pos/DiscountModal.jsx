@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, Percent, DollarSign, CheckCircle2 } from 'lucide-react';
+import { X, Percent, CheckCircle2 } from 'lucide-react';
 import { showAlert } from '@/utils/swal';
 import CurrencyInput from '@/components/CurrencyInput';
 
@@ -19,7 +19,11 @@ export default function DiscountModal({ isOpen, onClose, onApply, subTotal, init
     if (!isOpen) return null;
 
     const handleApply = () => {
-        const val = Number(discountValue) || 0;
+        const val = Number(discountValue || 0);
+        if (!Number.isFinite(val) || val < 0 || (discountType === 'percent' && val > 100)) {
+            showAlert.warning('Diskon tidak valid', 'Isi nominal positif atau persentase 0–100%.');
+            return;
+        }
         let amount = 0;
         
         if (discountType === 'percent') {
@@ -63,10 +67,10 @@ export default function DiscountModal({ isOpen, onClose, onApply, subTotal, init
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
+            <div role="dialog" aria-modal="true" aria-labelledby="discount-title" className="bg-white rounded-2xl w-full max-w-md max-h-[90dvh] shadow-2xl flex flex-col overflow-y-auto">
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-800">Tambahkan Diskon</h2>
+                        <h2 id="discount-title" className="text-xl font-bold text-gray-800">Tambahkan Diskon</h2>
                         <p className="text-sm text-gray-500 mt-1">Pilih jenis dan nominal diskon</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-xl transition-colors">
@@ -85,7 +89,7 @@ export default function DiscountModal({ isOpen, onClose, onApply, subTotal, init
                             }`}
                             onClick={() => setDiscountType('amount')}
                         >
-                            <DollarSign size={16} /> Nominal (Rp)
+                            <span className="font-bold">Rp</span> Nominal (Rp)
                         </button>
                         <button 
                             className={`flex-1 py-2.5 flex items-center justify-center gap-2 rounded-lg font-bold text-sm transition-all ${
@@ -111,6 +115,7 @@ export default function DiscountModal({ isOpen, onClose, onApply, subTotal, init
                             {discountType === 'percent' ? (
                                 <input
                                     type="number"
+                                    aria-label="Persentase Diskon"
                                     value={discountValue}
                                     onChange={(e) => setDiscountValue(e.target.value)}
                                     className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-xl text-gray-800 focus:bg-white focus:border-blue-500 focus:outline-none transition-all"
@@ -120,6 +125,7 @@ export default function DiscountModal({ isOpen, onClose, onApply, subTotal, init
                                 />
                             ) : (
                                 <CurrencyInput
+                                    aria-label="Nominal Diskon"
                                     value={discountValue}
                                     onChange={setDiscountValue}
                                     className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-xl text-gray-800 focus:bg-white focus:border-blue-500 focus:outline-none transition-all"

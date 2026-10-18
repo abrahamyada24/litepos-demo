@@ -7,6 +7,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DatePickerDropdown from '../components/DatePickerDropdown';
 import { PreOrderPaymentStatus, getPaymentStatusLabel } from '../utils/preOrderPayment';
 import { syncService } from '../services/syncService';
+import { restrictPhoneInput, normalizeCustomerPhone, customerPhoneAliases } from '../utils/customerPhone';
 import {
     getCartItemBaseUnitPrice,
     getCartItemEffectiveOriginalUnitPrice,
@@ -276,7 +277,8 @@ export default function CheckoutScreen({ navigation }: any) {
 
     const handleCreateCustomer = async () => {
         const name = newCustomer.name.trim();
-        const phone = newCustomer.phone.trim();
+        let phone: string | null;
+        try { phone = normalizeCustomerPhone(newCustomer.phone); } catch (error: any) { Alert.alert('Validasi', error.message); return; }
 
         if (!name) {
             Alert.alert('Nama Belum Diisi', 'Masukkan nama pelanggan terlebih dahulu.');
@@ -288,9 +290,10 @@ export default function CheckoutScreen({ navigation }: any) {
         try {
             const db = await getDBConnection();
             if (phone) {
+                const aliases = customerPhoneAliases(phone);
                 const [duplicate] = await db.executeSql(
-                    'SELECT id FROM customers WHERE TRIM(phone) = ? LIMIT 1',
-                    [phone]
+                    `SELECT id FROM customers WHERE TRIM(phone) IN (${aliases.map(() => '?').join(',')}) LIMIT 1`,
+                    aliases
                 );
                 if (duplicate.rows.length > 0) {
                     Alert.alert('Nomor HP Sudah Terdaftar', 'Pilih pelanggan yang sudah ada atau gunakan nomor HP lain.');
@@ -1015,12 +1018,12 @@ export default function CheckoutScreen({ navigation }: any) {
                                     onChangeText={name => setNewCustomer(current => ({ ...current, name }))}
                                 />
                                 <TextInput
-                                    maxLength={20}
                                     keyboardType="phone-pad"
                                     style={tw`bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 mb-3 text-gray-800 dark:text-gray-100`}
                                     placeholder="Nomor HP (opsional)"
                                     value={newCustomer.phone}
-                                    onChangeText={phone => setNewCustomer(current => ({ ...current, phone }))}
+                                    onChangeText={phone => setNewCustomer(current => ({ ...current, phone: restrictPhoneInput(phone) }))}
+                                    maxLength={16}
                                 />
                                 <TouchableOpacity
                                     disabled={isSavingCustomer || !newCustomer.name.trim()}

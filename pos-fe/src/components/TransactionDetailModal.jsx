@@ -303,6 +303,7 @@ export default function TransactionDetailModal({
 
         <div
           id="history-receipt-print"
+          data-print-surface
           ref={receiptRef}
           aria-hidden="true"
           className="fixed -left-[10000px] top-0 block bg-white font-mono text-[10px] text-black"

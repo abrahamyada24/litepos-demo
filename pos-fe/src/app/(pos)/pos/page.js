@@ -10,6 +10,7 @@ import ProductGrid from '@/components/pos/ProductGrid';
 import CartSidebar from '@/components/pos/CartSidebar';
 import MemberModal from '@/components/pos/MemberModal';
 import PaymentModal from '@/components/pos/PaymentModal';
+import DiscountModal from '@/components/pos/DiscountModal';
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal';
 import SavedTransactionModal from '@/components/pos/SavedTransactionModal';
 import ShiftGuardModal from '@/components/pos/ShiftGuardModal';
@@ -24,6 +25,7 @@ import {
 } from '@/utils/shiftReminder';
 import { getPosPendingTransactions } from '@/utils/savedTransactions';
 import { getCartItemLineTotal } from '@/utils/cartPricing';
+import { calculateCheckoutTotals } from '@/utils/checkoutTotals';
 import { useStore } from '@/store/useStore';
 
 const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -50,6 +52,9 @@ export default function POSPage() {
   
   // --- STATE UI ---
   const [cart, setCart] = useState([]);
+  const [discountValue, setDiscountValue] = useState(0);
+  const [discountType, setDiscountType] = useState('amount');
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [mobileView, setMobileView] = useState('menu'); 
@@ -381,8 +386,13 @@ export default function POSPage() {
 
   // --- CALCULATIONS ---
   const subTotal = cart.reduce((sum, item) => sum + getCartItemLineTotal(item), 0);
-  const taxAmount = subTotal * taxRate;
-  const grandTotal = subTotal + taxAmount;
+  const { discount: discountAmount, taxAmount, grandTotal } = calculateCheckoutTotals({
+    subTotal, taxRate, discountAmount: discountValue, discountType,
+  });
+
+  useEffect(() => {
+    if (cart.length === 0) { setDiscountValue(0); setDiscountType('amount'); }
+  }, [cart.length]);
   
   const deficit = Math.max(0, grandTotal - cashGiven);
   const change = Math.max(0, cashGiven - grandTotal);
@@ -437,6 +447,8 @@ export default function POSPage() {
               userId: userId, 
               customerId: selectedMember?.id || null,
               customerName: selectedMember?.name || guestCustomerName.trim() || null,
+              discountAmount: discountValue,
+              discountType,
               items: cart.map(c => ({
                 productId: c.id,
                 packageId: c.packageId || null,
@@ -478,6 +490,10 @@ export default function POSPage() {
               throw new Error(data.message);
           }
           const receiptTransaction = buildReceiptTransaction(data.data, type, payload.customerName);
+          if (data.data.customerId && data.data.pointsBalanceAfter != null) {
+            setMembers(current => current.map(member => member.id === data.data.customerId ? { ...member, points: data.data.pointsBalanceAfter } : member));
+            setSelectedMember(current => current?.id === data.data.customerId ? { ...current, points: data.data.pointsBalanceAfter } : current);
+          }
 
           if (activeSavedTransactionId) {
               try {
@@ -584,6 +600,8 @@ export default function POSPage() {
         orderType,
         tableNumber: null,
         preOrderDate: preOrderDate || null,
+        discountValue,
+        discountType,
         subTotal,
         taxAmount,
         grandTotal,
@@ -638,6 +656,8 @@ export default function POSPage() {
       if (restoredItems.length === 0) throw new Error('Isi pesanan kosong.');
 
       setCart(restoredItems);
+      setDiscountValue(Number(payload.discountValue) || 0);
+      setDiscountType(payload.discountType === 'percent' ? 'percent' : 'amount');
       setSelectedMember(payload.selectedMember || null);
       setGuestCustomerName(payload.guestCustomerName || '');
       setOrderType(payload.orderType === 'PRE_ORDER' ? 'PRE_ORDER' : 'TAKE_AWAY');
@@ -755,6 +775,9 @@ export default function POSPage() {
         preOrderDate={preOrderDate}
         setPreOrderDate={setPreOrderDate}
         taxRate={taxRate}
+        discount={{ type: discountType, value: discountValue, amount: discountAmount }}
+        onOpenDiscountModal={() => setIsDiscountModalOpen(true)}
+        onRemoveDiscount={() => { setDiscountValue(0); setDiscountType('amount'); }}
         onSaveTransaction={handleSaveTransaction}
         isSavingTransaction={isSavingTransaction}
         savedTransactionCount={savedTransactionCount}
@@ -775,6 +798,9 @@ export default function POSPage() {
       />
 
       {/* --- MODALS --- */}
+      <DiscountModal isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)}
+        initialDiscount={discountValue} initialType={discountType} subTotal={subTotal}
+        onApply={(value, type) => { setDiscountValue(value); setDiscountType(type); }}/>
 
       <ShiftGuardModal
          visible={!settingsLoaded || ((storeSettings?.enableShift === true || shiftRequiredByServer) && (shiftLoading || !activeShift))}
